@@ -133,81 +133,61 @@ class MarketList():
         else:
             return np.nan
 
-    def forecast_stock_usage_with_prophet(self, item, forecast_period='monthly', safety_cushion=1.10):
-        """
-        Enhanced method that can forecast weekly, monthly, or custom periods using Facebook's Prophet model
-        
-        Parameters:
-        - item: stock item name
-        - forecast_period: 'weekly', 'monthly', or number of days
-        - safety_cushion: safety multiplier for forecast
-        """
-        issues_df = self.get_issue_voucher()
-        item_df = issues_df.loc[issues_df["Item name"] == item, :].dropna()
+    def forecast_stock_usage_with_prophet(self, item, forecast_period="monthly", safety_cushion=1.10):
+        stock_name = item  # keep compatibility
+        try:
+            issue_df = self.get_issue_voucher()
+            if issue_df.empty or stock_name not in issue_df["Item name"].values:
+                return 0
 
-        if item_df.empty:
-            return 0.0
+            # Aggregate usage daily
+            stock_usage = (
+                issue_df[issue_df["Item name"] == stock_name]
+                .groupby("Date")["Usage"].sum()
+                .reset_index()
+            )
+            if stock_usage.empty:
+                return 0
 
-        # Determine aggregation frequency and forecast periods
-        if forecast_period == 'weekly':
-            freq = 'W'
-            periods = 1
-        elif forecast_period == 'monthly':
-            freq = 'M' 
-            periods = 1
-        elif isinstance(forecast_period, int):
-            # Custom number of days
-            freq = 'D'
-            periods = forecast_period
-        else:
-            freq = 'M'
-            periods = 1
+            prophet_df = stock_usage.rename(columns={"Date": "ds", "Usage": "y"})
+            prophet_df["ds"] = pd.to_datetime(prophet_df["ds"], errors="coerce")
+            prophet_df = prophet_df.dropna(subset=["ds", "y"])
 
-        # Aggregate data based on frequency
-        if freq == 'D':
-            # For daily forecasting, use daily data
-            prophet_df = item_df[['Date', 'Usage']].copy()
-        else:
-            # For weekly/monthly, aggregate accordingly
-            prophet_df = (item_df[['Date', 'Usage']]
-                         .set_index('Date')
-                         .resample(freq)
-                         .sum()
-                         .reset_index())
+            if prophet_df.empty or prophet_df.shape[0] < 3:
+                return 0
 
-        prophet_df = prophet_df.rename({'Date': 'ds', 'Usage': 'y'}, axis='columns')
+            # Prophet model
+            model = Prophet(daily_seasonality=True, yearly_seasonality=True)
+            model.fit(prophet_df)
 
-        yhat_cushioned = 0
+            # Forecast depending on period
+            if forecast_period == "weekly":
+                periods, freq = 7, "D"
+            elif forecast_period == "monthly":
+                periods, freq = 30, "D"
+            elif isinstance(forecast_period, int):
+                periods, freq = forecast_period, "D"
+            else:
+                raise ValueError("Invalid forecast_period value")
 
-        if not prophet_df.empty and prophet_df.shape[0] > 2:
-            try:
-                model = Prophet(
-                    daily_seasonality=True if freq == 'D' else False,
-                    weekly_seasonality=True,
-                    yearly_seasonality=True if len(prophet_df) > 24 else False
-                )
-                
-                model.fit(prophet_df)
-                
-                # Create future dataframe
-                future = model.make_future_dataframe(periods=periods, freq=freq)
-                forecast = model.predict(future)
-                
-                # Get the forecasted value
-                if freq == 'D' and isinstance(forecast_period, int):
-                    # For custom days, sum up the daily forecasts
-                    forecast_values = forecast.tail(periods)['yhat'].sum()
-                else:
-                    # For weekly/monthly, get the last forecast
-                    forecast_values = float(forecast.tail(1)['yhat'].iloc[0])
-                
-                yhat_cushioned = max(0, forecast_values * safety_cushion)
-                
-            except Exception as e:
-                print(f"Prophet forecasting error for {item}: {e}")
-                return 0.0
+            future = model.make_future_dataframe(periods=periods, freq=freq)
+            forecast = model.predict(future)
 
-        return round(yhat_cushioned, 0)
+            # ✅ Reverted: use only the last prediction
+            forecast_values = float(forecast.tail(1)["yhat"].values[0])
+
+            # Apply safety cushion
+            yhat_cushioned = forecast_values * safety_cushion
+            return int(max(0, round(yhat_cushioned)))
+
+        except Exception as e:
+            print(f"Error forecasting with Prophet for {stock_name}: {e}")
+            return 0
+
+
+
+       
+
 
     def forecast_monthly_stock_usage_with_prohet(self, item, safety_cushion=1.10):
         """
@@ -493,20 +473,31 @@ class MarketList():
         extras_and_exceptions_stock_name_list = self.get_extras_and_exceptions_stock_name()
 
         # Use category-based selection if provided
+       # Use category-based selection if provided
         if selected_categories:
             top_items = self.get_items_by_categories(
                 selected_categories=selected_categories,
                 x_items=x_items_limit,
                 excluded_items=excluded_items
             )
+
+            # Filter extras by selected categories
+            extras = []
+            for item in extras_and_exceptions_stock_name_list:
+                cat_series = stock_df.loc[stock_df["Stock Name"] == item, "Category"]
+                if not cat_series.empty and cat_series.iloc[0] in selected_categories:
+                    extras.append(item)
+
+            top_items.extend(extras)
+
         else:
             # Use default method
             top_items = self.get_top_x_number_of_items_to_buy(x_items_limit)
-
-        extras = extras_and_exceptions_stock_name_list
-        top_items.extend(extras)
+            # Keep all extras if no filtering is applied
+            top_items.extend(extras_and_exceptions_stock_name_list)
 
         items_to_buy = sorted(set(top_items))
+
         
         print(f"Processing {len(items_to_buy)} items with {forecast_period} forecasting...")
 

@@ -34,14 +34,14 @@ st.markdown("""
     margin: 0.5rem 0;
 }
 .category-box {
-    background-color: #e8f4fd;
+    background-color: #e8f4fd;  /* light blue */
     border-left: 4px solid #1f77b4;
     padding: 1rem;
     margin: 0.5rem 0;
     border-radius: 5px;
 }
 .forecast-period {
-    background-color: #f8f9fa;
+    background-color: #f8f9fa;  /* very light gray */
     border: 2px solid #007bff;
     padding: 1rem;
     border-radius: 10px;
@@ -102,8 +102,12 @@ try:
         st.subheader("📦 Category Selection")
         
         try:
+            @st.cache_data(ttl=300)  # cache for 5 minutes
+            def load_categories(_mkl):
+                return _mkl.get_available_categories()
+            
             # Get available categories
-            available_categories = st.session_state.mkl.get_available_categories()
+            available_categories = load_categories(st.session_state.mkl)
             
             # Debug: Show what we got
             # st.write("Debug - Available categories:", available_categories)
