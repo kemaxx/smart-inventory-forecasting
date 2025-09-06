@@ -8,6 +8,7 @@ import json
 import math
 from dotenv import load_dotenv
 from prophet import Prophet
+import streamlit as st
 
 load_dotenv()
 import os
@@ -40,11 +41,12 @@ class MarketList():
 
         return extras_items_list
 
-    def get_available_categories(self):
+    @st.cache_data(ttl=300)
+    def get_available_categories(_self):
         """
         Get all available categories from issues voucher
         """
-        issue_df = self.get_issue_voucher()
+        issue_df = _self.get_issue_voucher()
         # Get unique categories and remove any empty/null values
         categories = issue_df["Category"].dropna().unique().tolist()
         # Remove empty strings and clean up the data
@@ -173,7 +175,7 @@ class MarketList():
             future = model.make_future_dataframe(periods=periods, freq=freq)
             forecast = model.predict(future)
 
-            # ✅ Reverted: use only the last prediction
+            # âœ… Reverted: use only the last prediction
             forecast_values = float(forecast.tail(1)["yhat"].values[0])
 
             # Apply safety cushion
@@ -184,23 +186,19 @@ class MarketList():
             print(f"Error forecasting with Prophet for {stock_name}: {e}")
             return 0
 
-
-
-       
-
-
     def forecast_monthly_stock_usage_with_prohet(self, item, safety_cushion=1.10):
         """
         Wrapper method for backward compatibility
         """
         return self.forecast_stock_usage_with_prophet(item, 'monthly', safety_cushion)
 
-    def get_stock_data(self):
+    @st.cache_data(ttl=300)
+    def get_stock_data(_self):
         """
         This method returns a preprocessed data from the stock database in a pandas dataframe form
         :return:
         """
-        stock_sheet = self.gc.open_by_key("1qqI-9I99Kix2PS1ksUralHeFXoyaArN7ZXYmCnMDLA0")
+        stock_sheet = _self.gc.open_by_key("1qqI-9I99Kix2PS1ksUralHeFXoyaArN7ZXYmCnMDLA0")
         stock_wksheet = stock_sheet.worksheet("My Stock")
 
         columns = stock_wksheet.row_values(1)
@@ -229,12 +227,13 @@ class MarketList():
 
         return stock_df
 
-    def get_issue_voucher(self):
+    @st.cache_data(ttl=300)
+    def get_issue_voucher(_self):
         """
         This method returns a issues voucher in a pandas dataframe
         :return:
         """
-        issue_voucher_sheet = self.gc.open_by_key("1y-I8V05Anud-j7VWaob3OaE9ubUEd7qqUkVFB0N942w")
+        issue_voucher_sheet = _self.gc.open_by_key("1y-I8V05Anud-j7VWaob3OaE9ubUEd7qqUkVFB0N942w")
         issue_voucher_wksheet = issue_voucher_sheet.worksheet("Issues")
 
         columns = issue_voucher_wksheet.row_values(1)
@@ -253,7 +252,7 @@ class MarketList():
 
         df = df.loc[~(df["Dept"] == "FUNCTION"), :]
 
-        df = df.loc[~(df["Item name"].isin(self.fiterout_dormant_stock())), :]
+        df = df.loc[~(df["Item name"].isin(_self.fiterout_dormant_stock())), :]
 
         return df
 

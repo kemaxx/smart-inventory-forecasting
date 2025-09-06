@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Page configuration
 st.set_page_config(
-    page_title="Zecool Hotel - Enhanced Inventory Management",
+    page_title="KEN's Enhanced Inventory Management",
     page_icon="🏨",
     layout="wide"
 )
@@ -59,7 +59,7 @@ try:
         st.session_state.mkl = MarketList()
     
     # Header
-    st.markdown('<h1 class="main-header">🏨 Zecool Hotel - Enhanced Inventory Management</h1>', 
+    st.markdown('<h1 class="main-header">🏨 Kenneth\'s - Enhanced Inventory Management</h1>', 
                 unsafe_allow_html=True)
     
     # Main interface
@@ -155,19 +155,39 @@ try:
         
         st.markdown("---")
         
-        # Exception Items
-        st.subheader("🚫 Exception Items")
-        
-        excluded_items_text = st.text_area(
-            "Items to exclude (one per line):",
-            placeholder="EXPIRED RICE\nOLD STOCK ITEMS\nDISCONTINUED PRODUCTS",
-            help="Enter item names to exclude from the selected categories, one per line"
-        )
-        
-        excluded_items = []
-        if excluded_items_text:
-            excluded_items = [item.strip() for item in excluded_items_text.split('\n') if item.strip()]
-            st.info(f"🚫 {len(excluded_items)} items will be excluded")
+        # 🛑 Exception Items (smart selection)
+        st.subheader("🛑 Exception Items")
+
+        # ✅ Cache stock data to avoid repeated Google Sheets calls
+        @st.cache_data(ttl=300)  # cache for 5 minutes
+        def load_stock_data(_mkl):
+            return _mkl.get_stock_data()
+
+        if selected_categories:
+            stock_df = load_stock_data(st.session_state.mkl)
+
+            # Get all items belonging to the selected categories
+            category_items = (
+                stock_df[stock_df["Category"].isin(selected_categories)]["Stock Name"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+
+            if category_items:
+                # Multiselect for user to deselect exceptions
+                excluded_items = st.multiselect(
+                    "Uncheck items you want to exclude from the forecast",
+                    options=category_items,
+                    default=category_items,  # start with all selected
+                )
+            else:
+                st.info("No items found for the selected categories.")
+                excluded_items = []
+        else:
+            st.info("Select a category first to choose exception items.")
+            excluded_items = []
+
         
         st.markdown("---")
         
