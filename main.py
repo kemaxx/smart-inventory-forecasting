@@ -543,29 +543,38 @@ class MarketList():
                 else:
                     continue
 
-            remainder_mv_avg = None
+            #remainder_mv_avg = None
 
-            if item in staff_food:
-                if item in usage_proportions:
-                    staff_proportion = usage_proportions[item]['STAFF FOOD']
-                    house_proportion = 1 - staff_proportion
+        
 
-                    all_mv = item_mv
-                    staff_item_mv = all_mv * staff_proportion
-                    remainder_mv_avg = all_mv * house_proportion
-                else:
-                    staff_item_mv = item_mv * 0.3  # Default 30% for staff if no proportion data
-                    remainder_mv_avg = item_mv * 0.7
+            # First, determine if item has proportion data
+            if item in usage_proportions and 'STAFF FOOD' in usage_proportions[item]:
+                staff_proportion = usage_proportions[item]['STAFF FOOD']
+                house_proportion = 1 - staff_proportion
+            else:
+                staff_proportion = 0.3  # default
+                house_proportion = 0.7  # default
 
+            # Staff-only item
+            if (item in staff_food) and ("staff" in str(item).strip().lower()) or (staff_proportion > 0.30):
+                staff_item_mv = item_mv * staff_proportion
                 self._process_item_purchase(item, stock_df, staff_item_mv, self.staff_worksheet, chemicals)
 
-            if remainder_mv_avg is not None:
-                item_mv = remainder_mv_avg
+            # # Shared items — check staff side
+            # if item in staff_food and staff_proportion > 0.30:
+            #     staff_item_mv = item_mv * staff_proportion
+            #     self._process_item_purchase(item, stock_df, staff_item_mv, self.staff_worksheet, chemicals)
 
-            # Process for house or chemicals
-            self._process_item_purchase(item, stock_df, item_mv, 
-                                     self.chemicals_worksheet if item in chemicals else house_worksheet, 
-                                     chemicals)
+            # Shared items — check house side
+            if item in staff_food and house_proportion > 0.30:
+                house_item_mv = item_mv * house_proportion
+                self._process_item_purchase(item, stock_df, house_item_mv, house_worksheet, chemicals)
+
+            # Regular items
+            if item not in staff_food:
+                target_sheet = self.chemicals_worksheet if item in chemicals else house_worksheet
+                self._process_item_purchase(item, stock_df, item_mv, target_sheet, chemicals)
+
 
     def _process_item_purchase(self, item, stock_df, item_mv, target_worksheet, chemicals):
         """
